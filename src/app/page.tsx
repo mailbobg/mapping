@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { unstable_cache } from "next/cache";
 
+export const dynamic = 'force-dynamic';
+
 // Cache dashboard stats for 30 seconds
 const getDashboardStats = unstable_cache(
   async () => {
