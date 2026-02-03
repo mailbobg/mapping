@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Domain {
+  id        String    @id
+  name      String
+  features  Feature[]
+}
+
+model Feature {
+  id              String           @id
+  name            String
+  domainId        String
+  domain          Domain           @relation(fields: [domainId], references: [id])
+  productFunctions ProductFunction[]
+}
+
+model ProductFunction {
+  id             String              @id
+  name           String
+  nameCn         String?
+  descriptionEn  String?
+  descriptionCn  String?
+  featureId      String
+  feature        Feature             @relation(fields: [featureId], references: [id])
+  tags           String[]
+  createdAt      DateTime?           @default(now())
+  technicalFunctions TechnicalFunction[]
+}
+
+model TechnicalFunction {
+  id                String                 @id
+  name              String
+  description       String?
+  state             String?
+  progressPercent   Int                    @default(0)
+  productFunctionId String?
+  productFunction   ProductFunction?       @relation(fields: [productFunctionId], references: [id])
+  useCases          UseCaseTechnicalFunction[]
+}
+
+model UseCase {
+  id                   String                   @id
+  name                 String
+  description          String?
+  hmxInput             String?
+  hmxOutput            String?
+  customerPdFeature    String?
+  technicalFunctionRaw String?
+  useCaseTFs           UseCaseTechnicalFunction[]
+}
+
+model UseCaseTechnicalFunction {
+  useCaseId          String
+  technicalFunctionId String
+  useCase            UseCase           @relation(fields: [useCaseId], references: [id])
+  technicalFunction  TechnicalFunction @relation(fields: [technicalFunctionId], references: [id])
+
+  @@id([useCaseId, technicalFunctionId])
+}
