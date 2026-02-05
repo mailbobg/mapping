@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import ProgressEditor from "@/components/ProgressEditor";
 import { calcAverageProgress, countCompleted } from "@/lib/progress";
+import { useRouter } from "next/navigation";
 
 // Color palette for distinguishing Product Functions
 const PF_COLORS = [
@@ -53,11 +54,40 @@ type Props = {
   pfIds: string[];
 };
 
-export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Props) {
+type AvailableTF = {
+  id: string;
+  name: string;
+  description: string | null;
+  progressPercent: number | null;
+  productFunction: {
+    id: string;
+    name: string;
+    feature: {
+      name: string;
+      domain: { name: string } | null;
+    } | null;
+  } | null;
+};
+
+export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfList: initialPfList, pfIds: initialPfIds }: Props) {
+  const router = useRouter();
+  
+  // Local state for TF links (to support add/remove without page refresh)
+  const [localTfLinks, setLocalTfLinks] = useState<TfLink[]>(initialTfLinks);
+  const [localPfIds, setLocalPfIds] = useState<string[]>(initialPfIds);
+  
+  // Modal state for adding TFs
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [availableTFs, setAvailableTFs] = useState<AvailableTF[]>([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [tfSearch, setTfSearch] = useState("");
+  const [addingTfId, setAddingTfId] = useState<string | null>(null);
+  const [removingTfId, setRemovingTfId] = useState<string | null>(null);
+  
   // Track TF progress values in client state
   const [tfProgressMap, setTfProgressMap] = useState<Map<string, number>>(() => {
     const map = new Map<string, number>();
-    tfLinks.forEach((link) => {
+    localTfLinks.forEach((link) => {
       map.set(link.technicalFunction.id, link.technicalFunction.progressPercent ?? 0);
     });
     return map;
@@ -71,6 +101,121 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
       return newMap;
     });
   }, []);
+
+  // Fetch available TFs when modal opens
+  const fetchAvailableTFs = useCallback(async () => {
+    setLoadingAvailable(true);
+    try {
+      const res = await fetch(`/api/use-cases/${useCase.id}/available-technical-functions`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableTFs(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch available TFs:", error);
+    } finally {
+      setLoadingAvailable(false);
+    }
+  }, [useCase.id]);
+
+  useEffect(() => {
+    if (showAddModal) {
+      fetchAvailableTFs();
+    }
+  }, [showAddModal, fetchAvailableTFs]);
+
+  // Add TF to Use Case
+  const handleAddTF = async (tfId: string) => {
+    setAddingTfId(tfId);
+    try {
+      const res = await fetch(`/api/use-cases/${useCase.id}/technical-functions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ technicalFunctionId: tfId })
+      });
+      
+      if (res.ok) {
+        const addedTF = await res.json();
+        // Update local state
+        const newLink: TfLink = {
+          technicalFunction: {
+            id: addedTF.id,
+            name: addedTF.name,
+            description: addedTF.description || null,
+            progressPercent: addedTF.progressPercent,
+            productFunction: addedTF.productFunction
+          }
+        };
+        setLocalTfLinks(prev => [...prev, newLink]);
+        setTfProgressMap(prev => {
+          const newMap = new Map(prev);
+          newMap.set(addedTF.id, addedTF.progressPercent ?? 0);
+          return newMap;
+        });
+        
+        // Update PF IDs if new PF
+        if (addedTF.productFunction && !localPfIds.includes(addedTF.productFunction.id)) {
+          setLocalPfIds(prev => [...prev, addedTF.productFunction.id].sort());
+        }
+        
+        // Remove from available list
+        setAvailableTFs(prev => prev.filter(tf => tf.id !== tfId));
+      }
+    } catch (error) {
+      console.error("Failed to add TF:", error);
+    } finally {
+      setAddingTfId(null);
+    }
+  };
+
+  // Remove TF from Use Case
+  const handleRemoveTF = async (tfId: string) => {
+    if (!confirm("确定要移除这个 Technical Function 吗？")) return;
+    
+    setRemovingTfId(tfId);
+    try {
+      const res = await fetch(`/api/use-cases/${useCase.id}/technical-functions/${tfId}`, {
+        method: "DELETE"
+      });
+      
+      if (res.ok) {
+        // Update local state
+        setLocalTfLinks(prev => prev.filter(link => link.technicalFunction.id !== tfId));
+        setTfProgressMap(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(tfId);
+          return newMap;
+        });
+        
+        // Recalculate PF IDs
+        const remainingPfIds = new Set<string>();
+        localTfLinks
+          .filter(link => link.technicalFunction.id !== tfId)
+          .forEach(link => {
+            if (link.technicalFunction.productFunction?.id) {
+              remainingPfIds.add(link.technicalFunction.productFunction.id);
+            }
+          });
+        setLocalPfIds(Array.from(remainingPfIds).sort());
+      }
+    } catch (error) {
+      console.error("Failed to remove TF:", error);
+    } finally {
+      setRemovingTfId(null);
+    }
+  };
+
+  // Filter available TFs by search
+  const filteredAvailableTFs = useMemo(() => {
+    if (!tfSearch.trim()) return availableTFs;
+    const searchLower = tfSearch.toLowerCase();
+    return availableTFs.filter(tf => 
+      tf.id.toLowerCase().includes(searchLower) ||
+      tf.name.toLowerCase().includes(searchLower) ||
+      tf.productFunction?.name.toLowerCase().includes(searchLower) ||
+      tf.productFunction?.id.toLowerCase().includes(searchLower)
+    );
+  }, [availableTFs, tfSearch]);
 
   // Calculate Use Case progress from current state
   const { percent, done, total, isComplete, isActive } = useMemo(() => {
@@ -90,17 +235,33 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
   // Create color mapping for PFs
   const pfColorMap = useMemo(() => {
     const map = new Map<string, typeof PF_COLORS[number]>();
-    pfIds.forEach((pfId, index) => {
+    localPfIds.forEach((pfId, index) => {
       map.set(pfId, PF_COLORS[index % PF_COLORS.length]);
     });
     return map;
-  }, [pfIds]);
+  }, [localPfIds]);
+
+  // Get unique PFs from current TF links
+  const currentPfList = useMemo(() => {
+    const pfMap = new Map<string, ProductFunction>();
+    localTfLinks.forEach(link => {
+      const pf = link.technicalFunction.productFunction;
+      if (pf && !pfMap.has(pf.id)) {
+        // Find full PF info from initialPfList or create minimal
+        const fullPf = initialPfList.find(p => p.id === pf.id);
+        if (fullPf) {
+          pfMap.set(pf.id, fullPf);
+        }
+      }
+    });
+    return Array.from(pfMap.values()).sort((a, b) => a.id.localeCompare(b.id));
+  }, [localTfLinks, initialPfList]);
 
   // Calculate PF progress from current TF state
   const pfProgressMap = useMemo(() => {
     const map = new Map<string, { percent: number; done: number; total: number }>();
-    pfList.forEach((pf) => {
-      const tfIdsInPf = tfLinks
+    currentPfList.forEach((pf) => {
+      const tfIdsInPf = localTfLinks
         .filter((link) => link.technicalFunction.productFunction?.id === pf.id)
         .map((link) => link.technicalFunction.id);
       const values = tfIdsInPf.map((id) => tfProgressMap.get(id) ?? 0);
@@ -113,19 +274,19 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
       }
     });
     return map;
-  }, [tfLinks, pfList, tfProgressMap]);
+  }, [localTfLinks, currentPfList, tfProgressMap]);
 
   // Sort TF links by Product Function
   const sortedTfLinks = useMemo(() => {
-    return [...tfLinks].sort((a, b) => {
+    return [...localTfLinks].sort((a, b) => {
       const pfIdA = a.technicalFunction.productFunction?.id ?? "";
       const pfIdB = b.technicalFunction.productFunction?.id ?? "";
-      const indexA = pfIds.indexOf(pfIdA);
-      const indexB = pfIds.indexOf(pfIdB);
+      const indexA = localPfIds.indexOf(pfIdA);
+      const indexB = localPfIds.indexOf(pfIdB);
       if (indexA !== indexB) return indexA - indexB;
       return a.technicalFunction.id.localeCompare(b.technicalFunction.id);
     });
-  }, [tfLinks, pfIds]);
+  }, [localTfLinks, localPfIds]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -178,12 +339,12 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
         )}
 
         {/* Related Product Functions - Now reactive! */}
-        {pfList.length > 0 && (
+        {currentPfList.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-[10px] text-text-muted font-mono uppercase tracking-wider px-1">
               Related Product Functions
             </h3>
-            {pfList.map((pf) => {
+            {currentPfList.map((pf) => {
               const progress = pfProgressMap.get(pf.id) ?? { percent: 0, done: 0, total: 0 };
               const pfPercent = progress.percent;
               const pfComplete = pfPercent >= 100;
@@ -241,9 +402,20 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
           <h2 className="text-sm font-semibold text-text-primary">
             Technical Functions
           </h2>
-          <span className="tag tag-muted">
-            {tfLinks.length} linked
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="tag tag-muted">
+              {localTfLinks.length} linked
+            </span>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              添加
+            </button>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -301,24 +473,169 @@ export default function UseCaseContent({ useCase, tfLinks, pfList, pfIds }: Prop
                   )}
                 </div>
 
-                <div className="flex-shrink-0 pl-2.5 sm:pl-0">
+                <div className="flex-shrink-0 pl-2.5 sm:pl-0 flex items-center gap-2">
                   <ProgressEditor 
                     tfId={tf.id} 
                     initialPercent={tfPercent}
                     onProgressChange={handleProgressChange}
                   />
+                  <button
+                    onClick={() => handleRemoveTF(tf.id)}
+                    disabled={removingTfId === tf.id}
+                    className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger transition-colors disabled:opacity-50"
+                    title="移除"
+                  >
+                    {removingTfId === tf.id ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {tfLinks.length === 0 && (
+        {localTfLinks.length === 0 && (
           <div className="text-center py-12">
-            <div className="text-sm text-text-muted">No Technical Functions linked.</div>
+            <div className="text-sm text-text-muted mb-3">No Technical Functions linked.</div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-primary text-xs"
+            >
+              添加 Technical Function
+            </button>
           </div>
         )}
       </div>
+
+      {/* Add TF Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-bg-primary rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-text-primary">
+                添加 Technical Function
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setTfSearch("");
+                }}
+                className="p-1 rounded hover:bg-bg-tertiary text-text-muted hover:text-text-primary transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="p-4 border-b border-border">
+              <input
+                type="text"
+                value={tfSearch}
+                onChange={(e) => setTfSearch(e.target.value)}
+                placeholder="搜索 ID、名称或 Product Function..."
+                className="search-input"
+                autoFocus
+              />
+            </div>
+
+            {/* TF List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingAvailable ? (
+                <div className="text-center py-8 text-text-muted">
+                  <svg className="w-6 h-6 animate-spin mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  加载中...
+                </div>
+              ) : filteredAvailableTFs.length === 0 ? (
+                <div className="text-center py-8 text-text-muted">
+                  {tfSearch ? "没有匹配的 Technical Function" : "没有可添加的 Technical Function"}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredAvailableTFs.map((tf) => (
+                    <div
+                      key={tf.id}
+                      className="border border-border rounded-lg p-3 flex items-center justify-between hover:border-accent/30 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-bg-tertiary text-text-muted">
+                            {tf.id}
+                          </span>
+                          {tf.productFunction && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-light text-accent font-medium">
+                              {tf.productFunction.id}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium text-text-primary line-clamp-1">
+                          {tf.name}
+                        </div>
+                        {tf.productFunction && (
+                          <div className="text-[10px] text-text-muted mt-0.5 truncate">
+                            {tf.productFunction.feature?.domain?.name} / {tf.productFunction.feature?.name} / {tf.productFunction.name}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleAddTF(tf.id)}
+                        disabled={addingTfId === tf.id}
+                        className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {addingTfId === tf.id ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            添加中
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            添加
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-border flex justify-between items-center">
+              <span className="text-xs text-text-muted">
+                {filteredAvailableTFs.length} 个可添加
+              </span>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setTfSearch("");
+                }}
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
