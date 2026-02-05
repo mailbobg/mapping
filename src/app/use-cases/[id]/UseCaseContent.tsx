@@ -449,7 +449,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
       {/* RIGHT COLUMN: Technical Functions */}
       <div className="lg:col-span-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-text-primary">
+          <h2 className="text-base font-semibold text-text-primary">
             Technical Functions
           </h2>
           <div className="flex items-center gap-2">
@@ -513,7 +513,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                       </span>
                     )}
                   </div>
-                  <div className={`text-sm font-medium line-clamp-1 transition-colors ${isDone ? "text-success" : "text-text-primary"}`}>
+                  <div className={`text-base font-medium line-clamp-1 transition-colors ${isDone ? "text-success" : "text-text-primary"}`}>
                     {tf.name}
                   </div>
                   {tf.description && (
@@ -631,7 +631,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                             </span>
                           )}
                         </div>
-                        <div className="text-sm font-medium text-text-primary line-clamp-1">
+                        <div className="text-base font-medium text-text-primary line-clamp-1">
                           {tf.name}
                         </div>
                         {tf.productFunction && (

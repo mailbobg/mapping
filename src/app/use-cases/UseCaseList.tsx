@@ -263,7 +263,7 @@ export default function UseCaseList({ data }: Props) {
                 </div>
 
                 {/* Title */}
-                <h3 className="text-sm font-medium text-text-primary mb-4 group-hover:text-accent transition-colors line-clamp-2 leading-snug">
+                <h3 className="text-base font-semibold text-text-primary mb-4 group-hover:text-accent transition-colors line-clamp-2 leading-snug">
                   <HighlightText text={uc.name} highlight={searchQuery} />
                 </h3>
 
