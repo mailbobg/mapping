@@ -76,6 +76,9 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
   const [localTfLinks, setLocalTfLinks] = useState<TfLink[]>(initialTfLinks);
   const [localPfIds, setLocalPfIds] = useState<string[]>(initialPfIds);
   
+  // Track dynamically added PFs (not in initial list)
+  const [addedPfMap, setAddedPfMap] = useState<Map<string, ProductFunction>>(new Map());
+  
   // Modal state for adding TFs
   const [showAddModal, setShowAddModal] = useState(false);
   const [availableTFs, setAvailableTFs] = useState<AvailableTF[]>([]);
@@ -127,6 +130,9 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
   // Add TF to Use Case
   const handleAddTF = async (tfId: string) => {
     setAddingTfId(tfId);
+    // Find full TF info from available list before API call
+    const tfToAdd = availableTFs.find(tf => tf.id === tfId);
+    
     try {
       const res = await fetch(`/api/use-cases/${useCase.id}/technical-functions`, {
         method: "POST",
@@ -153,9 +159,24 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
           return newMap;
         });
         
-        // Update PF IDs if new PF
+        // Update PF IDs and add PF info if new PF
         if (addedTF.productFunction && !localPfIds.includes(addedTF.productFunction.id)) {
           setLocalPfIds(prev => [...prev, addedTF.productFunction.id].sort());
+          
+          // Add full PF info from the available TF data
+          if (tfToAdd?.productFunction) {
+            const newPf: ProductFunction = {
+              id: tfToAdd.productFunction.id,
+              name: tfToAdd.productFunction.name,
+              feature: tfToAdd.productFunction.feature,
+              technicalFunctions: []
+            };
+            setAddedPfMap(prev => {
+              const newMap = new Map(prev);
+              newMap.set(newPf.id, newPf);
+              return newMap;
+            });
+          }
         }
         
         // Remove from available list
@@ -170,7 +191,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
 
   // Remove TF from Use Case
   const handleRemoveTF = async (tfId: string) => {
-    if (!confirm("确定要移除这个 Technical Function 吗？")) return;
+    if (!confirm("Are you sure you want to remove this Technical Function?")) return;
     
     setRemovingTfId(tfId);
     try {
@@ -247,15 +268,15 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
     localTfLinks.forEach(link => {
       const pf = link.technicalFunction.productFunction;
       if (pf && !pfMap.has(pf.id)) {
-        // Find full PF info from initialPfList or create minimal
-        const fullPf = initialPfList.find(p => p.id === pf.id);
+        // Find full PF info from initialPfList or addedPfMap
+        const fullPf = initialPfList.find(p => p.id === pf.id) || addedPfMap.get(pf.id);
         if (fullPf) {
           pfMap.set(pf.id, fullPf);
         }
       }
     });
     return Array.from(pfMap.values()).sort((a, b) => a.id.localeCompare(b.id));
-  }, [localTfLinks, initialPfList]);
+  }, [localTfLinks, initialPfList, addedPfMap]);
 
   // Calculate PF progress from current TF state
   const pfProgressMap = useMemo(() => {
@@ -413,7 +434,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
-              添加
+              Add
             </button>
           </div>
         </div>
@@ -483,7 +504,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                     onClick={() => handleRemoveTF(tf.id)}
                     disabled={removingTfId === tf.id}
                     className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger transition-colors disabled:opacity-50"
-                    title="移除"
+                    title="Remove"
                   >
                     {removingTfId === tf.id ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -509,7 +530,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
               onClick={() => setShowAddModal(true)}
               className="btn-primary text-xs"
             >
-              添加 Technical Function
+              Add Technical Function
             </button>
           </div>
         )}
@@ -522,7 +543,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
             {/* Modal Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
               <h3 className="text-lg font-semibold text-text-primary">
-                添加 Technical Function
+                Add Technical Function
               </h3>
               <button
                 onClick={() => {
@@ -543,7 +564,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                 type="text"
                 value={tfSearch}
                 onChange={(e) => setTfSearch(e.target.value)}
-                placeholder="搜索 ID、名称或 Product Function..."
+                placeholder="Search by ID, name or Product Function..."
                 className="search-input"
                 autoFocus
               />
@@ -557,11 +578,11 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                   </svg>
-                  加载中...
+                  Loading...
                 </div>
               ) : filteredAvailableTFs.length === 0 ? (
                 <div className="text-center py-8 text-text-muted">
-                  {tfSearch ? "没有匹配的 Technical Function" : "没有可添加的 Technical Function"}
+                  {tfSearch ? "No matching Technical Functions" : "No Technical Functions available to add"}
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -601,14 +622,14 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                             </svg>
-                            添加中
+                            Adding
                           </>
                         ) : (
                           <>
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                             </svg>
-                            添加
+                            Add
                           </>
                         )}
                       </button>
@@ -621,7 +642,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
             {/* Modal Footer */}
             <div className="p-4 border-t border-border flex justify-between items-center">
               <span className="text-xs text-text-muted">
-                {filteredAvailableTFs.length} 个可添加
+                {filteredAvailableTFs.length} available
               </span>
               <button
                 onClick={() => {
@@ -630,7 +651,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                 }}
                 className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
               >
-                关闭
+                Close
               </button>
             </div>
           </div>
