@@ -15,20 +15,27 @@ export default function ProgressEditor({ tfId, initialPercent, onProgressChange 
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   const saveValue = useCallback(async (newValue: number) => {
-    if (newValue === lastSavedValue.current) return;
+    console.log(`[ProgressEditor] saveValue called: tfId=${tfId}, newValue=${newValue}, lastSaved=${lastSavedValue.current}`);
+    if (newValue === lastSavedValue.current) {
+      console.log(`[ProgressEditor] Skipping save - value unchanged`);
+      return;
+    }
     
     setStatus("saving");
+    console.log(`[ProgressEditor] Sending PATCH request...`);
     try {
       const res = await fetch(`/api/technical-functions/${tfId}/progress`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ progressPercent: newValue })
       });
+      console.log(`[ProgressEditor] Response status: ${res.status}`);
       if (!res.ok) throw new Error("Failed");
       lastSavedValue.current = newValue;
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 1200);
-    } catch {
+    } catch (err) {
+      console.error(`[ProgressEditor] Save failed:`, err);
       setStatus("error");
       setTimeout(() => setStatus("idle"), 2000);
     }
@@ -36,11 +43,13 @@ export default function ProgressEditor({ tfId, initialPercent, onProgressChange 
 
   // Auto-save with debounce
   useEffect(() => {
+    console.log(`[ProgressEditor] Debounce effect triggered: value=${value}, lastSaved=${lastSavedValue.current}`);
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
     
     debounceTimer.current = setTimeout(() => {
+      console.log(`[ProgressEditor] Debounce timer fired: value=${value}, lastSaved=${lastSavedValue.current}`);
       if (value !== lastSavedValue.current) {
         saveValue(value);
       }
