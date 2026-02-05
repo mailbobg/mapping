@@ -458,7 +458,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
             </span>
             <button
               onClick={() => setShowAddModal(true)}
-              className="text-xs px-3 py-1.5 flex items-center gap-1.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/50 transition-colors"
+              className="text-xs px-3 py-1.5 flex items-center gap-1.5 rounded-lg border border-accent/30 text-accent font-semibold hover:bg-accent/5 hover:border-accent/50 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -557,7 +557,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
             <div className="text-sm text-text-muted mb-3">No Technical Functions linked.</div>
             <button
               onClick={() => setShowAddModal(true)}
-              className="text-xs px-4 py-2 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/50 transition-colors"
+              className="text-xs px-4 py-2 rounded-lg border border-accent/30 text-accent font-semibold hover:bg-accent/5 hover:border-accent/50 transition-colors"
             >
               Add Technical Function
             </button>
@@ -643,7 +643,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
                       <button
                         onClick={() => handleAddTF(tf.id)}
                         disabled={addingTfId === tf.id}
-                        className="text-xs px-3 py-1.5 flex items-center gap-1.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-xs px-3 py-1.5 flex items-center gap-1.5 rounded-lg border border-accent/30 text-accent font-semibold hover:bg-accent/5 hover:border-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {addingTfId === tf.id ? (
                           <>
