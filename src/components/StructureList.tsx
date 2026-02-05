@@ -395,7 +395,7 @@ export default function StructureList({ data, highlightPfId }: Props) {
                       </svg>
                     )}
                   </div>
-                  <h3 className="text-sm font-medium text-text-primary group-hover:text-accent transition-colors line-clamp-1">
+                  <h3 className="text-base font-semibold text-text-primary group-hover:text-accent transition-colors line-clamp-1">
                     <HighlightText text={pf.name} highlight={searchQuery} />
                   </h3>
                   {pf.descriptionEn && (
