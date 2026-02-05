@@ -40,7 +40,7 @@ type ProductFunction = {
     name: string;
     domain: { name: string } | null;
   } | null;
-  technicalFunctions: { progressPercent: number | null }[];
+  technicalFunctions: { id: string; progressPercent: number | null }[];
 };
 
 type Props = {
@@ -87,18 +87,37 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
   const [addingTfId, setAddingTfId] = useState<string | null>(null);
   const [removingTfId, setRemovingTfId] = useState<string | null>(null);
   
-  // Track TF progress values in client state
-  const [tfProgressMap, setTfProgressMap] = useState<Map<string, number>>(() => {
+  // Track ALL TF progress values (including TFs not in this Use Case but in related PFs)
+  // Key: TF ID, Value: progressPercent
+  const [allTfProgressMap, setAllTfProgressMap] = useState<Map<string, number>>(() => {
     const map = new Map<string, number>();
+    // Add TFs from current Use Case links
     localTfLinks.forEach((link) => {
       map.set(link.technicalFunction.id, link.technicalFunction.progressPercent ?? 0);
+    });
+    // Add all TFs from related PFs (may include TFs not in this Use Case)
+    initialPfList.forEach((pf) => {
+      pf.technicalFunctions.forEach((tf) => {
+        if (!map.has(tf.id)) {
+          map.set(tf.id, tf.progressPercent ?? 0);
+        }
+      });
     });
     return map;
   });
 
-  // Update progress for a specific TF
+  // Convenience accessor for TFs in current Use Case
+  const tfProgressMap = useMemo(() => {
+    const map = new Map<string, number>();
+    localTfLinks.forEach((link) => {
+      map.set(link.technicalFunction.id, allTfProgressMap.get(link.technicalFunction.id) ?? 0);
+    });
+    return map;
+  }, [localTfLinks, allTfProgressMap]);
+
+  // Update progress for a specific TF - updates the master map
   const handleProgressChange = useCallback((tfId: string, newValue: number) => {
-    setTfProgressMap((prev) => {
+    setAllTfProgressMap((prev) => {
       const newMap = new Map(prev);
       newMap.set(tfId, newValue);
       return newMap;
@@ -153,7 +172,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
           }
         };
         setLocalTfLinks(prev => [...prev, newLink]);
-        setTfProgressMap(prev => {
+        setAllTfProgressMap(prev => {
           const newMap = new Map(prev);
           newMap.set(addedTF.id, addedTF.progressPercent ?? 0);
           return newMap;
@@ -202,11 +221,8 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
       if (res.ok) {
         // Update local state
         setLocalTfLinks(prev => prev.filter(link => link.technicalFunction.id !== tfId));
-        setTfProgressMap(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(tfId);
-          return newMap;
-        });
+        // Note: We don't remove from allTfProgressMap because the TF still exists,
+        // just not linked to this Use Case. PF progress should still include it.
         
         // Recalculate PF IDs
         const remainingPfIds = new Set<string>();
@@ -279,11 +295,14 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
   }, [localTfLinks, initialPfList, addedPfMap]);
 
   // Calculate PF progress from ALL TFs under the PF (same as Structure page)
+  // Uses allTfProgressMap which updates in real-time when user changes TF progress
   const pfProgressMap = useMemo(() => {
     const map = new Map<string, { percent: number; done: number; total: number }>();
     currentPfList.forEach((pf) => {
-      // Use ALL TFs under this PF, not just the ones linked to this Use Case
-      const allTfProgress = pf.technicalFunctions.map(tf => tf.progressPercent ?? 0);
+      // Get progress values for all TFs under this PF using their actual IDs
+      const allTfProgress = pf.technicalFunctions.map(
+        tf => allTfProgressMap.get(tf.id) ?? tf.progressPercent ?? 0
+      );
       if (allTfProgress.length > 0) {
         map.set(pf.id, {
           percent: calcAverageProgress(allTfProgress),
@@ -294,7 +313,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
         // Fallback for dynamically added PFs: calculate from linked TFs only
         const linkedTfProgress = localTfLinks
           .filter(link => link.technicalFunction.productFunction?.id === pf.id)
-          .map(link => tfProgressMap.get(link.technicalFunction.id) ?? 0);
+          .map(link => allTfProgressMap.get(link.technicalFunction.id) ?? 0);
         if (linkedTfProgress.length > 0) {
           map.set(pf.id, {
             percent: calcAverageProgress(linkedTfProgress),
@@ -305,7 +324,7 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
       }
     });
     return map;
-  }, [currentPfList, localTfLinks, tfProgressMap]);
+  }, [currentPfList, allTfProgressMap, localTfLinks]);
 
   // Sort TF links by Product Function
   const sortedTfLinks = useMemo(() => {

@@ -105,7 +105,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
             }
           },
           technicalFunctions: {
-            select: { progressPercent: true }
+            select: { id: true, progressPercent: true }
           }
         }
       })
