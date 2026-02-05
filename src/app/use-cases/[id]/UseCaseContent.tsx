@@ -278,24 +278,34 @@ export default function UseCaseContent({ useCase, tfLinks: initialTfLinks, pfLis
     return Array.from(pfMap.values()).sort((a, b) => a.id.localeCompare(b.id));
   }, [localTfLinks, initialPfList, addedPfMap]);
 
-  // Calculate PF progress from current TF state
+  // Calculate PF progress from ALL TFs under the PF (same as Structure page)
   const pfProgressMap = useMemo(() => {
     const map = new Map<string, { percent: number; done: number; total: number }>();
     currentPfList.forEach((pf) => {
-      const tfIdsInPf = localTfLinks
-        .filter((link) => link.technicalFunction.productFunction?.id === pf.id)
-        .map((link) => link.technicalFunction.id);
-      const values = tfIdsInPf.map((id) => tfProgressMap.get(id) ?? 0);
-      if (values.length > 0) {
+      // Use ALL TFs under this PF, not just the ones linked to this Use Case
+      const allTfProgress = pf.technicalFunctions.map(tf => tf.progressPercent ?? 0);
+      if (allTfProgress.length > 0) {
         map.set(pf.id, {
-          percent: calcAverageProgress(values),
-          done: countCompleted(values),
-          total: values.length,
+          percent: calcAverageProgress(allTfProgress),
+          done: countCompleted(allTfProgress),
+          total: allTfProgress.length,
         });
+      } else {
+        // Fallback for dynamically added PFs: calculate from linked TFs only
+        const linkedTfProgress = localTfLinks
+          .filter(link => link.technicalFunction.productFunction?.id === pf.id)
+          .map(link => tfProgressMap.get(link.technicalFunction.id) ?? 0);
+        if (linkedTfProgress.length > 0) {
+          map.set(pf.id, {
+            percent: calcAverageProgress(linkedTfProgress),
+            done: countCompleted(linkedTfProgress),
+            total: linkedTfProgress.length,
+          });
+        }
       }
     });
     return map;
-  }, [localTfLinks, currentPfList, tfProgressMap]);
+  }, [currentPfList, localTfLinks, tfProgressMap]);
 
   // Sort TF links by Product Function
   const sortedTfLinks = useMemo(() => {
