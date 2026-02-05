@@ -159,6 +159,16 @@ export default function StructureList({ data, highlightPfId }: Props) {
     }
   }, []);
 
+  // Handle TF progress change - update local state for immediate UI feedback
+  const handleTfProgressChange = useCallback((tfId: string, newValue: number) => {
+    setLocalData(prev => prev.map(pf => ({
+      ...pf,
+      technicalFunctions: pf.technicalFunctions.map(tf =>
+        tf.id === tfId ? { ...tf, progressPercent: newValue } : tf
+      )
+    })));
+  }, []);
+
   // Update TF parent PF
   const handleTfParentChange = useCallback(async (tfId: string, newPfId: string, currentPfId: string) => {
     const key = `tf-${tfId}`;
@@ -550,7 +560,11 @@ export default function StructureList({ data, highlightPfId }: Props) {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                                   </svg>
                                 </button>
-                                <ProgressEditor tfId={tf.id} initialPercent={tf.progressPercent ?? 0} />
+                                <ProgressEditor 
+                                  tfId={tf.id} 
+                                  initialPercent={tf.progressPercent ?? 0}
+                                  onProgressChange={handleTfProgressChange}
+                                />
                               </div>
                             </div>
                             
