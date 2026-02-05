@@ -12,26 +12,25 @@ export default function ProgressEditor({ tfId, initialPercent, onProgressChange 
   const [value, setValue] = useState(initialPercent);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedValue = useRef(initialPercent);
+  const pendingValue = useRef<number | null>(null); // Track value to save
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const isUserEditing = useRef(false); // Track if user is editing
 
   const saveValue = useCallback(async (newValue: number) => {
-    console.log(`[ProgressEditor] saveValue called: tfId=${tfId}, newValue=${newValue}, lastSaved=${lastSavedValue.current}`);
     if (newValue === lastSavedValue.current) {
-      console.log(`[ProgressEditor] Skipping save - value unchanged`);
       return;
     }
     
     setStatus("saving");
-    console.log(`[ProgressEditor] Sending PATCH request...`);
     try {
       const res = await fetch(`/api/technical-functions/${tfId}/progress`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ progressPercent: newValue })
       });
-      console.log(`[ProgressEditor] Response status: ${res.status}`);
       if (!res.ok) throw new Error("Failed");
       lastSavedValue.current = newValue;
+      pendingValue.current = null;
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 1200);
     } catch (err) {
@@ -41,18 +40,17 @@ export default function ProgressEditor({ tfId, initialPercent, onProgressChange 
     }
   }, [tfId]);
 
-  // Auto-save with debounce
+  // Auto-save with debounce - only save pendingValue
   useEffect(() => {
-    console.log(`[ProgressEditor] Debounce effect triggered: value=${value}, lastSaved=${lastSavedValue.current}`);
+    if (pendingValue.current === null) return;
+    
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
     
+    const valueToSave = pendingValue.current;
     debounceTimer.current = setTimeout(() => {
-      console.log(`[ProgressEditor] Debounce timer fired: value=${value}, lastSaved=${lastSavedValue.current}`);
-      if (value !== lastSavedValue.current) {
-        saveValue(value);
-      }
+      saveValue(valueToSave);
     }, 600); // 600ms debounce
 
     return () => {
@@ -62,19 +60,25 @@ export default function ProgressEditor({ tfId, initialPercent, onProgressChange 
     };
   }, [value, saveValue]);
 
-  // Sync with initialPercent if it changes externally
+  // Sync with initialPercent only if NOT from user editing
   useEffect(() => {
-    if (initialPercent !== lastSavedValue.current) {
+    if (!isUserEditing.current && initialPercent !== value) {
       setValue(initialPercent);
       lastSavedValue.current = initialPercent;
     }
-  }, [initialPercent]);
+  }, [initialPercent, value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = Math.min(100, Math.max(0, Number(e.target.value)));
+    isUserEditing.current = true;
+    pendingValue.current = newValue;
     setValue(newValue);
     // Notify parent immediately for UI updates
     onProgressChange?.(tfId, newValue);
+    // Reset editing flag after a short delay
+    setTimeout(() => {
+      isUserEditing.current = false;
+    }, 1000);
   };
 
   const isDone = value >= 100;
